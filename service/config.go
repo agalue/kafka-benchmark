@@ -11,12 +11,16 @@ import (
 
 type Config struct {
 	BootstrapServer  string
+	Topic            string
 	StatsPort        int
 	Workers          int
 	PacketsPerSecond int
 }
 
 func (cfg *Config) TickDuration() time.Duration {
+	if cfg.PacketsPerSecond <= 0 {
+		return time.Duration(0)
+	}
 	return time.Duration((cfg.Workers * 1000000000) / cfg.PacketsPerSecond)
 }
 
