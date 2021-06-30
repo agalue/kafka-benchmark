@@ -1,13 +1,17 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+type Run func(ctx context.Context, stats *Stats)
 
 type Config struct {
 	BootstrapServer  string
@@ -15,6 +19,20 @@ type Config struct {
 	StatsPort        int
 	Workers          int
 	PacketsPerSecond int
+}
+
+func (cfg *Config) StartWorkers(ctx context.Context, run Run) {
+	stats := new(Stats)
+	stats.Init(cfg.StatsPort)
+	wg := new(sync.WaitGroup)
+	wg.Add(cfg.Workers)
+	for i := 0; i < cfg.Workers; i++ {
+		go func() {
+			defer wg.Done()
+			run(ctx, stats)
+		}()
+	}
+	wg.Wait()
 }
 
 func (cfg *Config) TickDuration() time.Duration {

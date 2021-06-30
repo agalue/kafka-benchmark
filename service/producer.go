@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -13,28 +12,18 @@ type Producer struct {
 	Config *Config
 }
 
-func (gen *Producer) Start(ctx context.Context) {
-	stats := new(Stats)
-	stats.Init(gen.Config.StatsPort)
-	wg := new(sync.WaitGroup)
-	wg.Add(gen.Config.Workers)
-	for i := 0; i < gen.Config.Workers; i++ {
-		go func() {
-			defer wg.Done()
-			gen.startWorker(ctx, stats)
-		}()
-	}
-	wg.Wait()
+func (p *Producer) Start(ctx context.Context) {
+	p.Config.StartWorkers(ctx, p.startWorker)
 }
 
-func (gen *Producer) startWorker(ctx context.Context, stats *Stats) {
-	kafkaCfg := &kafka.ConfigMap{"bootstrap.servers": gen.Config.BootstrapServer}
+func (p *Producer) startWorker(ctx context.Context, stats *Stats) {
+	kafkaCfg := &kafka.ConfigMap{"bootstrap.servers": p.Config.BootstrapServer}
 	producer, err := kafka.NewProducer(kafkaCfg)
 	if err != nil {
 		log.Panicf("Cannot create producer: %v", err)
 		return
 	}
-	ticker := time.NewTicker(gen.Config.TickDuration())
+	ticker := time.NewTicker(p.Config.TickDuration())
 	delivery := make(chan kafka.Event)
 	for {
 		select {
@@ -43,7 +32,7 @@ func (gen *Producer) startWorker(ctx context.Context, stats *Stats) {
 			close(delivery)
 			return
 		case <-ticker.C:
-			producer.Produce(gen.generateMessage(), delivery)
+			producer.Produce(p.generateMessage(), delivery)
 		case e := <-delivery:
 			m := e.(*kafka.Message)
 			if m.TopicPartition.Error == nil {
@@ -55,9 +44,9 @@ func (gen *Producer) startWorker(ctx context.Context, stats *Stats) {
 	}
 }
 
-func (gen *Producer) generateMessage() *kafka.Message {
+func (p *Producer) generateMessage() *kafka.Message {
 	return &kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &gen.Config.Topic, Partition: kafka.PartitionAny},
+		TopicPartition: kafka.TopicPartition{Topic: &p.Config.Topic, Partition: kafka.PartitionAny},
 		Value:          []byte("This is a test"),
 	}
 }
